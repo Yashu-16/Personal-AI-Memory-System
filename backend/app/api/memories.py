@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.memory import Memory, MemoryType
 from app.models.user import User
 from app.schemas.memory import (
+    MemoryCreate,
     MemoryResponse,
     MemorySearchRequest,
     MemorySearchResponse,
@@ -19,6 +20,29 @@ from app.schemas.memory import (
 )
 
 router = APIRouter()
+
+
+@router.post("/", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
+async def create_memory(
+    payload: MemoryCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+) -> Memory:
+    """Create a new memory for the current user."""
+    memory = Memory(
+        user_id=current_user.id,
+        memory_type=payload.memory_type,
+        content=payload.content,
+        summary=payload.summary,
+        source_type=payload.source_type,
+        source_ref=payload.source_ref,
+        confidence=payload.confidence,
+        salience_score=payload.salience_score,
+    )
+    db.add(memory)
+    await db.flush()
+    await db.refresh(memory)
+    return memory
 
 
 @router.get("/", response_model=list[MemoryResponse])

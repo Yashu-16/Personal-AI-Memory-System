@@ -40,8 +40,35 @@ def test_get_memory_not_found(client, auth_headers):
     assert response.status_code == 404
 
 
+def test_create_memory_via_api(client, auth_headers):
+    """POST /api/memories/ creates a memory and returns 201."""
+    payload = {
+        "content": "Promised to send the contract by Friday.",
+        "source_type": "note",
+        "memory_type": "commitment",
+    }
+    response = client.post("/api/memories/", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["content"] == payload["content"]
+    assert data["source_type"] == "note"
+    assert data["memory_type"] == "commitment"
+    assert data["is_active"] is True
+
+
+def test_create_memory_ignores_unknown_fields(client, auth_headers):
+    """POST /api/memories/ silently ignores extra fields like 'metadata'."""
+    payload = {
+        "content": "Note with extra fields.",
+        "source_type": "note",
+        "metadata": {"project": "test"},   # not a model field – should be ignored
+    }
+    response = client.post("/api/memories/", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["content"] == payload["content"]
+
+
 def test_soft_delete_memory(client, auth_headers, db, test_user):
-    """Deleting a memory sets is_active=False."""
     mem = Memory(
         user_id=test_user.id,
         memory_type=MemoryType.task,

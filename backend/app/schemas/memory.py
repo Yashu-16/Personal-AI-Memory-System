@@ -29,6 +29,8 @@ class MemoryResponse(BaseModel):
 
 
 class MemoryCreate(BaseModel):
+    model_config = {"extra": "ignore"}
+
     memory_type: MemoryType = MemoryType.fact
     content: str = Field(min_length=1)
     summary: Optional[str] = None

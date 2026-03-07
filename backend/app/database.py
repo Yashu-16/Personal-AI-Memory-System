@@ -113,30 +113,70 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def _patch_metadata_for_sqlite() -> None:
+    """Replace PostgreSQL-specific column types with SQLite-compatible ones.
+
+    Called automatically when the configured database URL is an SQLite URL.
+    This mirrors the same approach used in the test suite's conftest.py so
+    that ``CREATE TABLE`` DDL does not contain JSONB or vector column types
+    which SQLite cannot compile.
+    """
+    import uuid as _uuid_module
+    from sqlalchemy import JSON, String, Text
+    from sqlalchemy.types import TypeDecorator
+
+    class _SQLiteUUID(TypeDecorator):  # type: ignore[type-arg]
+        impl = String(36)
+        cache_ok = True
+
+        def process_bind_param(self, value, dialect):  # type: ignore[override]
+            return None if value is None else str(value)
+
+        def process_result_value(self, value, dialect):  # type: ignore[override]
+            return None if value is None else _uuid_module.UUID(value)
+
+    for table in Base.metadata.tables.values():
+        for col in table.columns:
+            type_name = col.type.__class__.__name__
+            if type_name == "UUID":
+                col.type = _SQLiteUUID()
+            elif type_name == "Vector":
+                col.type = Text()
+            elif type_name in ("JSONB", "JSON"):
+                col.type = JSON()
+
+
 async def init_db() -> None:
     """Create pgvector extension and all tables on startup."""
-    async with engine.begin() as conn:
-        try:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            logger.info("pgvector extension ensured.")
-        except Exception as exc:
-            logger.warning("Could not create pgvector extension: %s", exc)
+    # Import all models so they register with Base.metadata before any DDL
+    from app.models import (  # noqa: F401
+        audit_log,
+        commitment,
+        entity,
+        feedback,
+        goal,
+        insight,
+        memory,
+        project,
+        reminder,
+        source_document,
+        task,
+        user,
+    )
 
-        # Import all models so they register with Base.metadata
-        from app.models import (  # noqa: F401
-            audit_log,
-            commitment,
-            entity,
-            feedback,
-            goal,
-            insight,
-            memory,
-            project,
-            reminder,
-            source_document,
-            task,
-            user,
-        )
+    db_url = _make_async_url(settings.DATABASE_URL)
+    is_sqlite = db_url.startswith("sqlite")
+
+    if is_sqlite:
+        _patch_metadata_for_sqlite()
+
+    async with engine.begin() as conn:
+        if not is_sqlite:
+            try:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                logger.info("pgvector extension ensured.")
+            except Exception as exc:
+                logger.warning("Could not create pgvector extension: %s", exc)
 
         await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created / verified.")
