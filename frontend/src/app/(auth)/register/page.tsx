@@ -1,0 +1,99 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { api } from '@/lib/api'
+import { saveTokens } from '@/lib/auth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Brain } from 'lucide-react'
+
+const registerSchema = z.object({
+  full_name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Invalid email'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  confirm_password: z.string(),
+}).refine(data => data.password === data.confirm_password, {
+  message: "Passwords don't match",
+  path: ['confirm_password'],
+})
+
+type RegisterForm = z.infer<typeof registerSchema>
+
+export default function RegisterPage() {
+  const router = useRouter()
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
+  })
+
+  const onSubmit = async (data: RegisterForm) => {
+    setIsLoading(true)
+    setError('')
+    try {
+      const response = await api.auth.register(data.full_name, data.email, data.password)
+      saveTokens(response.access_token, response.refresh_token)
+      router.push('/dashboard')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } } }
+      setError(e.response?.data?.detail || 'Registration failed. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-2">
+            <Brain className="h-10 w-10 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">Create your account</CardTitle>
+          <CardDescription>Start building your personal AI memory</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="full_name">Full Name</Label>
+              <Input id="full_name" placeholder="Jane Smith" {...register('full_name')} />
+              {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" placeholder="you@example.com" {...register('email')} />
+              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+              {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm_password">Confirm Password</Label>
+              <Input id="confirm_password" type="password" placeholder="••••••••" {...register('confirm_password')} />
+              {errors.confirm_password && <p className="text-xs text-destructive">{errors.confirm_password.message}</p>}
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'Creating account...' : 'Create Account'}
+            </Button>
+          </form>
+          <p className="text-center text-sm text-muted-foreground mt-4">
+            Already have an account?{' '}
+            <Link href="/login" className="text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
