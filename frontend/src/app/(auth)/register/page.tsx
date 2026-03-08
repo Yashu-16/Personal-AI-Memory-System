@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { api } from '@/lib/api'
+import { authApi } from '@/lib/api'
 import { saveTokens } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +38,7 @@ export default function RegisterPage() {
     setIsLoading(true)
     setError('')
     try {
-      const response = await api.auth.register(data.full_name, data.email, data.password)
+      const response = await authApi.register({ full_name: data.full_name, email: data.email, password: data.password })
       saveTokens(response.access_token, response.refresh_token)
       router.push('/dashboard')
     } catch (err: unknown) {
